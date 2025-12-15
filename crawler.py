@@ -13,7 +13,7 @@ from datetime import datetime
 # [설정]
 # ======================================================
 FILE_NAME = "electlink_voc.csv"
-SEARCH_KEYWORDS = ["SK일렉링크", "일렉링크", "워터", "채비", "이브이시스"] 
+SEARCH_KEYWORDS = ["일렉링크", "워터", "채비", "이브이시스"] 
 
 # [핵심] 검색 결과가 많아 더 깊게(2~3페이지 분량) 찾아볼 키워드 지정
 DEEP_SEARCH_KEYWORDS = ["워터", "채비"]
