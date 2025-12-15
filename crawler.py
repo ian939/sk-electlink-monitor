@@ -29,6 +29,10 @@ print(f"⚠️  주의: 반드시 기존 '{FILE_NAME}' 파일을 삭제하고 �
 
 options = webdriver.ChromeOptions()
 options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+options.add_argument("--headless")  # [중요] 화면 없이 실행
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+options.add_argument("--disable-gpu")
 
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 time.sleep(2)
