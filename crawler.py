@@ -19,7 +19,7 @@ SEARCH_KEYWORDS = ["일렉링크", "워터", "채비", "이브이시스"]
 DEEP_SEARCH_KEYWORDS = ["워터", "채비"]
 
 EXCLUDE_WORDS = ["팝니다", "삽니다", "매입", "크레딧", "양도", "쿠폰", "판매", "구매"]
-TARGET_CAFE_KEYWORDS = ["테슬라", "전기차", "EV"] 
+TARGET_CAFE_KEYWORDS = ["테슬라", "전기차", "EV", "아이오닉"] 
 # ======================================================
 
 data_list = []
