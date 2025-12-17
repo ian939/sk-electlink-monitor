@@ -11,6 +11,7 @@ st.markdown("---")
 # 2. 데이터 불러오기
 try:
     df = pd.read_csv("electlink_voc.csv")
+    df = df.sort_values(by="작성일", ascending=False)  # ⭐ 이 줄을 추가하면 최신순으로 바뀝니다.
     # [에러 방지] 키워드 컬럼 확인
     if "키워드" not in df.columns:
         st.error("⚠️ CSV 파일 양식이 오래되었습니다. 기존 CSV를 삭제 후 crawler.py를 다시 실행해주세요.")
