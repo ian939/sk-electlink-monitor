@@ -10,8 +10,13 @@ from datetime import datetime
 webhook_env = os.environ.get("SLACK_WEBHOOK_URLS", "")
 
 if webhook_env:
-    # 콤마(,)로 구분된 주소를 잘라서 리스트로 만듭니다.
-    SLACK_WEBHOOK_LIST = [url.strip() for url in webhook_env.split(',') if url.strip()]
+    # 콤마(,)로 구분된 주소를 잘라서 리스트로 만듭니다. (따옴표 제거 로직 포함)
+    raw_list = webhook_env.split(',')
+    SLACK_WEBHOOK_LIST = []
+    for url in raw_list:
+        clean_url = url.strip().replace('"', '').replace("'", "")
+        if clean_url:
+            SLACK_WEBHOOK_LIST.append(clean_url)
 else:
     # 만약 Secrets 설정이 없다면 빈 리스트
     SLACK_WEBHOOK_LIST = []
@@ -26,7 +31,6 @@ def send_daily_report():
 
     if not SLACK_WEBHOOK_LIST:
         print("❌ 오류: 슬랙 웹훅 URL을 찾을 수 없습니다. (GitHub Secrets 설정을 확인하세요)")
-        # 로컬 테스트용이라면 여기에 주소를 임시로 넣어서 테스트하세요.
         return
 
     # CSV 파일 읽기
@@ -36,19 +40,34 @@ def send_daily_report():
         print("❌ 데이터 파일이 없습니다.")
         return
 
+    # 오늘 날짜 데이터만 필터링
     today_df = df[df['작성일'].str.contains(today_str, na=False)]
 
     sk_keywords = ["SK일렉링크", "일렉링크"]
     comp_keywords = ["워터", "채비", "이브이시스"]
 
+    # 1. SK일렉링크 데이터 필터링
     sk_df = today_df[today_df['키워드'].isin(sk_keywords)]
-    comp_df = today_df[today_df['키워드'].isin(comp_keywords)]
-
     sk_count = len(sk_df)
-    comp_count = len(comp_df)
 
+    # 2. 경쟁사별 상세 카운트 계산 (여기서 수정됨 ✨)
+    comp_counts = []
+    for comp in comp_keywords:
+        # 각 경쟁사 키워드별로 몇 개인지 셉니다.
+        count = len(today_df[today_df['키워드'] == comp])
+        comp_counts.append(f"{comp} {count}건")
+    
+    # 예: "워터 1건, 채비 0건, 이브이시스 2건" 처럼 글자로 합칩니다.
+    comp_msg_str = ", ".join(comp_counts)
+
+
+    # 메시지 내용 만들기
     message = f"📢 *[{today_str}] SK일렉링크 일일 모니터링*\n\n"
-    message += f"오늘자 SK일렉링크 커뮤니티 언급된 수는 *{sk_count}건*입니다 (경쟁사는 {comp_count}건입니다)\n\n"
+    
+    # 수정된 부분: 경쟁사 통계를 상세 내용으로 교체
+    message += f"오늘자 SK일렉링크 커뮤니티 언급된 수는 *{sk_count}건*입니다\n"
+    message += f"(경쟁사 현황: {comp_msg_str})\n\n"
+    
     message += f"📊 *전체 현황 대시보드 보러가기*:\n{DASHBOARD_URL}\n\n"
     message += "📝 *오늘자 당사로 언급된 키워드*\n"
 
@@ -68,6 +87,10 @@ def send_daily_report():
     print(f"🚀 총 {len(SLACK_WEBHOOK_LIST)}곳으로 전송을 시작합니다...")
     
     for i, webhook_url in enumerate(SLACK_WEBHOOK_LIST):
+        # URL 유효성 간단 체크
+        if not webhook_url.startswith("http"):
+            continue
+
         try:
             response = requests.post(webhook_url, json=payload)
             if response.status_code == 200:
