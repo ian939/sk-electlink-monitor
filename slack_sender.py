@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ======================================================
 # [보안 설정] GitHub Secrets에서 'SLACK_WEBHOOK_URLS'라는 이름으로 가져옵니다.
@@ -26,9 +26,10 @@ DASHBOARD_URL = "https://sk-electlink-monitor-aj2cncmpcwo8rm3muzrylw.streamlit.a
 # ======================================================
 
 def send_daily_report():
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    print(f"📅 기준 날짜: {today_str}")
-
+    kst_now = datetime.now() + timedelta(hours=9)
+    today_str = kst_now.strftime("%Y-%m-%d")    
+    print(f"📅 기준 날짜(한국시간): {today_str}")
+    
     if not SLACK_WEBHOOK_LIST:
         print("❌ 오류: 슬랙 웹훅 URL을 찾을 수 없습니다. (GitHub Secrets 설정을 확인하세요)")
         return
