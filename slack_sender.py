@@ -5,12 +5,11 @@ import os
 from datetime import datetime, timedelta
 
 # ======================================================
-# [보안 설정] GitHub Secrets에서 'SLACK_WEBHOOK_URLS'라는 이름으로 가져옵니다.
+# [보안 설정] GitHub Secrets에서 'SLACK_WEBHOOK_URLS' 가져오기
 # ======================================================
 webhook_env = os.environ.get("SLACK_WEBHOOK_URLS", "")
 
 if webhook_env:
-    # 콤마(,)로 구분된 주소를 잘라서 리스트로 만듭니다. (따옴표 제거 로직 포함)
     raw_list = webhook_env.split(',')
     SLACK_WEBHOOK_LIST = []
     for url in raw_list:
@@ -18,7 +17,6 @@ if webhook_env:
         if clean_url:
             SLACK_WEBHOOK_LIST.append(clean_url)
 else:
-    # 만약 Secrets 설정이 없다면 빈 리스트
     SLACK_WEBHOOK_LIST = []
 
 CSV_FILE = "electlink_voc.csv"
@@ -26,52 +24,58 @@ DASHBOARD_URL = "https://sk-electlink-monitor-aj2cncmpcwo8rm3muzrylw.streamlit.a
 # ======================================================
 
 def send_daily_report():
+    # 1. 한국 시간 설정 (서버시간 UTC+9)
     kst_now = datetime.now() + timedelta(hours=9)
     today_str = kst_now.strftime("%Y-%m-%d")    
     print(f"📅 기준 날짜(한국시간): {today_str}")
     
     if not SLACK_WEBHOOK_LIST:
-        print("❌ 오류: 슬랙 웹훅 URL을 찾을 수 없습니다. (GitHub Secrets 설정을 확인하세요)")
+        print("❌ 오류: 슬랙 웹훅 URL을 찾을 수 없습니다.")
         return
 
-    # CSV 파일 읽기
+    # 2. CSV 파일 읽기
     try:
         df = pd.read_csv(CSV_FILE)
     except FileNotFoundError:
         print("❌ 데이터 파일이 없습니다.")
         return
 
-    # 오늘 날짜 데이터만 필터링
+    # 3. 오늘 날짜 데이터만 필터링
     today_df = df[df['작성일'].str.contains(today_str, na=False)]
 
+    # ------------------------------------------------------
+    # [데이터 분류] 네이버 카페 vs 유튜브
+    # ------------------------------------------------------
     sk_keywords = ["SK일렉링크", "일렉링크"]
     comp_keywords = ["워터", "채비", "이브이시스"]
 
-    # 1. SK일렉링크 데이터 필터링
+    # (1) SK일렉링크 (네이버 카페)
     sk_df = today_df[today_df['키워드'].isin(sk_keywords)]
     sk_count = len(sk_df)
 
-    # 2. 경쟁사별 상세 카운트 계산 (여기서 수정됨 ✨)
+    # (2) 경쟁사 현황 (네이버 카페)
     comp_counts = []
     for comp in comp_keywords:
-        # 각 경쟁사 키워드별로 몇 개인지 셉니다.
         count = len(today_df[today_df['키워드'] == comp])
         comp_counts.append(f"{comp} {count}건")
-    
-    # 예: "워터 1건, 채비 0건, 이브이시스 2건" 처럼 글자로 합칩니다.
     comp_msg_str = ", ".join(comp_counts)
 
-
-    # 메시지 내용 만들기
+    # (3) 유튜브 데이터 (영상/댓글 포함)
+    youtube_df = today_df[today_df['키워드'].str.contains("유튜브", na=False)]
+    
+    # ------------------------------------------------------
+    # [메시지 작성]
+    # ------------------------------------------------------
     message = f"📢 *[{today_str}] SK일렉링크 일일 모니터링*\n\n"
     
-    # 수정된 부분: 경쟁사 통계를 상세 내용으로 교체
+    # [섹션 1] 요약 통계
     message += f"오늘자 SK일렉링크 커뮤니티 언급된 수는 *{sk_count}건*입니다\n"
     message += f"(경쟁사 현황: {comp_msg_str})\n\n"
     
     message += f"📊 *전체 현황 대시보드 보러가기*:\n{DASHBOARD_URL}\n\n"
-    message += "📝 *오늘자 당사로 언급된 키워드*\n"
-
+    
+    # [섹션 2] 커뮤니티(네이버) 리스트
+    message += "📝 *오늘자 당사로 언급된 키워드 (Community)*\n"
     if sk_count > 0:
         for index, row in sk_df.iterrows():
             title = row['제목']
@@ -80,17 +84,28 @@ def send_daily_report():
     else:
         message += "• (특이 사항 없음)\n"
 
+    # [섹션 3] 유튜브 리스트 (추가된 부분 ✨)
+    message += "\n📺 *[유튜브] 모니터링 이슈 (Video/Comment)*\n"
+    if not youtube_df.empty:
+        for index, row in youtube_df.iterrows():
+            title = row['제목'] # 이미 크롤러에서 볼드 처리됨 (*브랜드*)
+            link = row['링크']
+            message += f"• <{link}|{title}>\n"
+    else:
+        message += "• (특이 사항 없음)\n"
+
+    # ------------------------------------------------------
+    # [전송]
+    # ------------------------------------------------------
     payload = {
         "text": message,
-        "unfurl_links": False
+        "unfurl_links": False # 링크 미리보기 끄기 (깔끔하게 보려고)
     }
 
     print(f"🚀 총 {len(SLACK_WEBHOOK_LIST)}곳으로 전송을 시작합니다...")
     
     for i, webhook_url in enumerate(SLACK_WEBHOOK_LIST):
-        # URL 유효성 간단 체크
-        if not webhook_url.startswith("http"):
-            continue
+        if not webhook_url.startswith("http"): continue
 
         try:
             response = requests.post(webhook_url, json=payload)
