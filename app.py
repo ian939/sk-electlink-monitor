@@ -11,9 +11,8 @@ st.markdown("---")
 # 2. 데이터 불러오기
 try:
     df = pd.read_csv("electlink_voc.csv")
-    df = df.sort_values(by="작성일", ascending=False)  # [중요] 최신순 정렬
+    df = df.sort_values(by="작성일", ascending=False)
     
-    # [에러 방지] 키워드 컬럼 확인
     if "키워드" not in df.columns:
         st.error("⚠️ CSV 파일 양식이 오래되었습니다. 기존 CSV를 삭제 후 crawler.py를 다시 실행해주세요.")
         st.stop()
@@ -55,7 +54,6 @@ with col3:
     last_time = df['수집시점'].iloc[0] if '수집시점' in df.columns and not df.empty else "-"
     st.write(f"최근 업데이트: {last_time}")
 
-# SK 리스트
 st.dataframe(
     df_sk[display_columns],
     column_config={
@@ -77,7 +75,7 @@ st.subheader("⚔️ 경쟁사 최신 동향 (Naver Cafe)")
 if not df_comp.empty:
     tab1, tab2, tab3, tab4 = st.tabs(["전체 보기", "워터(WATER)", "채비(CHAEVI)", "이브이시스(EVSIS)"])
     
-    with tab1: # 전체
+    with tab1:
         st.caption(f"총 {len(df_comp)}건의 경쟁사 글이 있습니다.")
         st.dataframe(
             df_comp[display_columns],
@@ -106,32 +104,58 @@ else:
 st.markdown("---")
 
 # =========================================================
-# [섹션 3] 📺 유튜브 여론 (영상/댓글) - ✨ 새로 추가된 부분
+# [섹션 3] 📺 유튜브 여론 (YouTube) - ✨ 업데이트됨
 # =========================================================
 st.subheader("📺 유튜브 여론 모니터링 (YouTube)")
 
 if not df_youtube.empty:
-    # 유튜브 데이터 통계
-    yt_video_count = len(df_youtube[df_youtube['키워드'] == "유튜브(영상)"])
-    yt_comment_count = len(df_youtube[df_youtube['키워드'] == "유튜브(댓글)"])
+    # 데이터 분리 (영상 vs 댓글)
+    df_yt_videos = df_youtube[df_youtube['키워드'] == "유튜브(영상)"]
+    df_yt_comments = df_youtube[df_youtube['키워드'] == "유튜브(댓글)"]
     
+    # 상단 통계
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("총 유튜브 데이터", f"{len(df_youtube)} 건")
-    with c2: st.metric("수집된 영상", f"{yt_video_count} 개")
-    with c3: st.metric("수집된 댓글", f"{yt_comment_count} 개")
+    with c2: st.metric("수집된 영상", f"{len(df_yt_videos)} 개")
+    with c3: st.metric("브랜드 언급 댓글", f"{len(df_yt_comments)} 개")
+    
+    # 탭 분리: 영상 목록 / 댓글 반응
+    yt_tab1, yt_tab2 = st.tabs(["🎥 수집된 영상 목록", "💬 주요 댓글 반응 (Key Comments)"])
+    
+    # [탭 1] 영상 목록 (기존처럼 테이블로)
+    with yt_tab1:
+        if not df_yt_videos.empty:
+            st.dataframe(
+                df_yt_videos[display_columns],
+                column_config={
+                    "링크": st.column_config.LinkColumn("바로가기", display_text="Watch"),
+                    "제목": st.column_config.TextColumn("제목 (내용)", width="large"),
+                    "카페명": st.column_config.TextColumn("채널명"),
+                    "키워드": st.column_config.TextColumn("구분"),
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        else:
+            st.info("최근 24시간 내 수집된 영상이 없습니다.")
 
-    st.dataframe(
-        df_youtube[display_columns],
-        column_config={
-            "링크": st.column_config.LinkColumn("바로가기", display_text="Watch"),
-            "제목": st.column_config.TextColumn("제목 (내용)", width="large"),
-            "카페명": st.column_config.TextColumn("채널/작성자"),
-            "키워드": st.column_config.TextColumn("구분"), # 영상인지 댓글인지 표시
-        },
-        hide_index=True,
-        use_container_width=True,
-        height=400
-    )
+    # [탭 2] 댓글 반응 (✨ 볼드 처리를 위해 마크다운 사용)
+    with yt_tab2:
+        if not df_yt_comments.empty:
+            st.info("💡 댓글 내 '일렉링크', '채비', '워터', '이브이시스' 등 브랜드 키워드가 포함된 내용만 표시됩니다.")
+            
+            for index, row in df_yt_comments.iterrows():
+                # 스타일링된 카드 형태로 출력
+                with st.chat_message("user"):
+                    st.write(f"**{row['카페명']}** (작성일: {row['작성일']})")
+                    # 여기서 row['제목']에는 이미 '*브랜드*' 처리가 되어 있음 -> 마크다운이 볼드로 변환해줌
+                    # 제목 앞의 '💬 ' 아이콘 제거 후 출력
+                    clean_content = row['제목'].replace("💬 ", "")
+                    st.markdown(f"{clean_content}")
+                    st.caption(f"[원본 영상 보러가기]({row['링크']})")
+        else:
+            st.write("🤐 아직 브랜드가 언급된 주요 댓글이 없습니다.")
+
 else:
     st.info("📺 최근 24시간 내 수집된 유튜브 데이터가 없습니다.")
 
