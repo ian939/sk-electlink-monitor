@@ -24,9 +24,13 @@ jobs:
 
     - name: 필요한 라이브러리 설치
       run: |
-        pip install pandas selenium webdriver-manager requests
+        # 👇 맨 끝에 'google-api-python-client' 를 추가했습니다!
+        pip install pandas selenium webdriver-manager requests google-api-python-client
 
     - name: 1. 크롤러 실행 (데이터 수집)
+      env: 
+        # 👇 [중요] 크롤러가 금고 열쇠(API키)를 쓸 수 있게 허락해줍니다.
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       run: python crawler.py
 
     - name: 2. 슬랙 전송 실행
