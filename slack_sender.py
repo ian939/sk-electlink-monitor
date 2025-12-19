@@ -24,8 +24,7 @@ DASHBOARD_URL = "https://sk-electlink-monitor-aj2cncmpcwo8rm3muzrylw.streamlit.a
 # ======================================================
 
 def send_daily_report():
-    # 1. 한국 시간 설정 (서버시간 UTC+9)
-    # (필터링에는 안 쓰지만, 리포트 제목의 날짜 표시용으로 필요함)
+    # 1. 한국 시간 설정
     kst_now = datetime.now() + timedelta(hours=9)
     today_str = kst_now.strftime("%Y-%m-%d")    
     print(f"📅 리포트 발송 기준 날짜: {today_str}")
@@ -41,48 +40,43 @@ def send_daily_report():
         print("❌ 데이터 파일이 없습니다.")
         return
 
-    # ======================================================
-    # ✨ [핵심 수정] 날짜 대신 '(New)' 태그로 최신 데이터 필터링
-    # ======================================================
-    # 크롤러가 방금 수집한 데이터에만 '(New)'를 붙여뒀으므로, 이것만 가져오면 됩니다.
-    # regex=True를 써서 괄호()를 문자로 인식하게 처리했습니다.
+    # 3. 신규 데이터 필터링 ((New) 태그)
     today_df = df[df['작성일'].str.contains(r"\(New\)", regex=True, na=False)]
     
     print(f"🔍 전송할 신규 데이터: 총 {len(today_df)}건 감지됨")
 
     # ------------------------------------------------------
-    # [데이터 분류] 네이버 카페 vs 유튜브
+    # [데이터 분류]
     # ------------------------------------------------------
     sk_keywords = ["SK일렉링크", "일렉링크"]
     comp_keywords = ["워터", "채비", "이브이시스"]
 
-    # (1) SK일렉링크 (네이버 카페)
+    # (1) SK일렉링크
     sk_df = today_df[today_df['키워드'].isin(sk_keywords)]
     sk_count = len(sk_df)
 
-    # (2) 경쟁사 현황 (네이버 카페)
+    # (2) 경쟁사 카운트 계산 (요약 줄 표시용) ✨ 복구됨
     comp_counts = []
     for comp in comp_keywords:
         count = len(today_df[today_df['키워드'] == comp])
         comp_counts.append(f"{comp} {count}건")
     comp_msg_str = ", ".join(comp_counts)
 
-    # (3) 유튜브 데이터 (영상/댓글 포함)
-    # 키워드 컬럼에 '유튜브'라는 단어가 포함된 모든 행
+    # (3) 유튜브
     youtube_df = today_df[today_df['키워드'].str.contains("유튜브", na=False)]
-    
+
     # ------------------------------------------------------
     # [메시지 작성]
     # ------------------------------------------------------
     message = f"📢 *[{today_str}] SK일렉링크 일일 모니터링*\n\n"
     
-    # [섹션 1] 요약 통계
+    # [섹션 1] 요약 및 대시보드
     message += f"오늘자 SK일렉링크 커뮤니티 언급된 수는 *{sk_count}건*입니다\n"
-    message += f"(경쟁사 현황: {comp_msg_str})\n\n"
+    message += f"({comp_msg_str})\n\n" # ✨ 요청하신 요약 줄 (경쟁사 현황) 유지!
     
     message += f"📊 *전체 현황 대시보드 보러가기*:\n{DASHBOARD_URL}\n\n"
     
-    # [섹션 2] 커뮤니티(네이버) 리스트
+    # [섹션 2] SK일렉링크 커뮤니티 리스트
     message += "📝 *오늘자 당사로 언급된 키워드 (Community)*\n"
     if sk_count > 0:
         for index, row in sk_df.iterrows():
@@ -92,11 +86,29 @@ def send_daily_report():
     else:
         message += "• (특이 사항 없음)\n"
 
-    # [섹션 3] 유튜브 리스트
+    # [섹션 3] 경쟁사 언급 현황 (상세 리스트)
+    comp_exists = False
+    comp_section_msg = ""
+    
+    for comp in comp_keywords:
+        target_comp_df = today_df[today_df['키워드'] == comp]
+        if not target_comp_df.empty:
+            comp_exists = True
+            comp_section_msg += f"\n🔹 *[{comp}]*\n"
+            for index, row in target_comp_df.iterrows():
+                title = row['제목']
+                link = row['링크']
+                comp_section_msg += f"• <{link}|{title}>\n"
+    
+    if comp_exists:
+        message += "\n⚔️ *오늘자 경쟁사 언급 현황*\n"
+        message += comp_section_msg
+    
+    # [섹션 4] 유튜브 리스트
     message += "\n📺 *[유튜브] 모니터링 이슈 (Video/Comment)*\n"
     if not youtube_df.empty:
         for index, row in youtube_df.iterrows():
-            title = row['제목'] # 이미 크롤러에서 볼드 처리됨 (*브랜드*)
+            title = row['제목'] 
             link = row['링크']
             message += f"• <{link}|{title}>\n"
     else:
@@ -107,7 +119,8 @@ def send_daily_report():
     # ------------------------------------------------------
     payload = {
         "text": message,
-        "unfurl_links": False # 링크 미리보기 끄기 (깔끔하게 보려고)
+        "unfurl_links": False, 
+        "unfurl_media": False  # ✨ 유튜브 미리보기 끄기
     }
 
     print(f"🚀 총 {len(SLACK_WEBHOOK_LIST)}곳으로 전송을 시작합니다...")
