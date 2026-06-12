@@ -247,11 +247,22 @@ if __name__ == "__main__":
     df_new = pd.DataFrame(all_data)
     if not df_new.empty:
         df_new = df_new[["작성일", "키워드", "카페명", "제목", "링크", "수집시점"]]
+        # 줄바꿈/캐리지리턴 제거 (CSV 깨짐 방지 → 다음 실행의 read_csv 실패 예방)
+        for col in df_new.columns:
+            df_new[col] = df_new[col].astype(str).str.replace(r"[\r\n]+", " ", regex=True).str.strip()
 
     if os.path.exists(FILE_NAME):
         try:
-            df_old = pd.read_csv(FILE_NAME)
-            
+            # 기존 데이터 읽기 (깨진 행이 있어도 죽지 않도록 견고하게)
+            try:
+                df_old = pd.read_csv(FILE_NAME)
+            except Exception as read_err:
+                print(f"⚠️ 기본 파서 실패 → 견고 모드로 재시도: {read_err}")
+                df_old = pd.read_csv(FILE_NAME, engine="python", on_bad_lines="skip")
+
+            # 덮어쓰기 전 백업 (만일을 대비한 안전장치)
+            df_old.to_csv(f"{FILE_NAME}.bak", index=False, encoding="utf-8-sig")
+
             # ✅ [핵심 수정] 기존 데이터에서 '(New)' 꼬리표 떼기! (초기화)
             if '작성일' in df_old.columns:
                 df_old['작성일'] = df_old['작성일'].str.replace(" (New)", "", regex=False)
@@ -294,9 +305,10 @@ if __name__ == "__main__":
                     print("   -> (GitHub) 변경 사항 없음 (이미 최신)")
 
         except Exception as e:
-            print(f"파일 처리 에러: {e}")
-            if not df_new.empty:
-                df_new.to_csv(FILE_NAME, mode='w', header=True, index=False, encoding="utf-8-sig")
+            # ⛔ [중요] 여기서 절대 새 데이터만으로 덮어쓰지 않는다.
+            #    과거 누적분 전체가 사라지는 초기화 사고의 직접 원인이었음.
+            #    에러가 나면 기존 파일은 그대로 두고 종료한다.
+            print(f"❌ 파일 처리 에러 (기존 데이터 보존, 덮어쓰기 안 함): {e}")
     else:
         # 파일이 없을 때
         if not df_new.empty:
