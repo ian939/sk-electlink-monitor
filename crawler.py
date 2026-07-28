@@ -15,6 +15,9 @@ from selenium.webdriver.common.keys import Keys
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+# [VoC 필터] 판매·주식글 배제 / 브랜드 관련성 판정 / 링크 정규화 (규칙은 voc_filters.py에서 관리)
+from voc_filters import is_excluded_post, is_relevant, contains_brand, canonicalize_link
+
 # ======================================================
 # [설정 1] 공통 및 파일 설정
 # ======================================================
@@ -23,10 +26,10 @@ FILE_NAME = "electlink_voc.csv"
 # ======================================================
 # [설정 2] 네이버 카페 설정
 # ======================================================
-NAVER_SEARCH_KEYWORDS = ["일렉링크", "워터", "채비", "이브이시스"] 
-DEEP_SEARCH_KEYWORDS = ["워터", "채비"] 
-EXCLUDE_WORDS = ["팝니다", "삽니다", "매입", "크레딧", "양도", "쿠폰", "판매", "구매"]
-TARGET_CAFE_KEYWORDS = ["테슬라", "전기차", "EV", "아이오닉"] 
+NAVER_SEARCH_KEYWORDS = ["일렉링크", "워터", "채비", "이브이시스"]
+DEEP_SEARCH_KEYWORDS = ["워터", "채비"]
+# 판매글 단어 목록·브랜드별 수집 규칙은 voc_filters.py의 EXCLUDE_WORDS / KEYWORD_RULES에서 관리
+TARGET_CAFE_KEYWORDS = ["테슬라", "전기차", "EV", "아이오닉"]
 
 # ======================================================
 # [설정 3] 유튜브 설정
@@ -127,7 +130,8 @@ def crawl_youtube():
 
                     found_brand_in_comment = False
                     for brand in TARGET_BRANDS:
-                        if brand in text:
+                        # 동음이의어 배제 판정 (예: '미네랄워터'만 있는 댓글은 워터 언급으로 안 침)
+                        if contains_brand(text, brand):
                             text = text.replace(brand, f"*{brand}*")
                             found_brand_in_comment = True
                     
@@ -202,10 +206,13 @@ def crawl_naver():
                     try:
                         title_ele = article.find_element(By.CSS_SELECTOR, "a.title_link")
                         title = title_ele.text
-                        link = title_ele.get_attribute("href")
+                        link = canonicalize_link(title_ele.get_attribute("href"))
                     except: continue
 
-                    if any(bad_word in title for bad_word in EXCLUDE_WORDS): continue
+                    # [VoC 필터] 포인트/카드 판매·거래 글, 주식/상장 글 배제
+                    if is_excluded_post(title): continue
+                    # [VoC 필터] 브랜드 무관 글 배제 (워터 동음이의어, 관용구 '채비', 본문만 매칭된 글 등)
+                    if not is_relevant(keyword, title): continue
 
                     # [날짜] 한국 시간 기준 적용
                     kst_now = datetime.now() + timedelta(hours=9)
@@ -273,10 +280,15 @@ if __name__ == "__main__":
                 if not df_new.empty:
                     df_new.to_csv(FILE_NAME, mode='w', header=True, index=False, encoding="utf-8-sig")
             else:
-                # 중복 제거 후 병합
+                # 중복 제거 후 병합 — 네이버 링크의 ?art= 토큰이 검색 시점마다 달라지므로
+                # 정규화한 링크 기준, 같은 글도 키워드별로는 각각 1건 허용: (키워드, 링크) 키
+                if '링크' in df_old.columns:
+                    df_old['링크'] = df_old['링크'].astype(str).map(canonicalize_link)
                 if not df_new.empty:
-                    existing_links = df_old['링크'].tolist()
-                    df_final = df_new[~df_new['링크'].isin(existing_links)]
+                    df_new = df_new.drop_duplicates(subset=['키워드', '링크'])
+                    old_keys = set(zip(df_old['키워드'].astype(str), df_old['링크']))
+                    is_dup = df_new.apply(lambda r: (r['키워드'], r['링크']) in old_keys, axis=1)
+                    df_final = df_new[~is_dup]
                 else:
                     df_final = pd.DataFrame()
 
